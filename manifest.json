@@ -1,0 +1,38 @@
+{
+    "name": "Zerk Counter",
+    "description": "Interaktywny licznik dla społeczności - wymaga potwierdzenia od dwóch widzów",
+    "version": "1.0.0",
+    "author": "Twój Nick",
+    "views": {
+      "video_overlay": {
+        "viewer_url": "video_overlay.html",
+        "can_link_external_content": false
+      },
+      "config": {
+        "viewer_url": "config.html",
+        "can_link_external_content": false
+      }
+    },
+    "configuration_views": {
+      "broadcaster": {
+        "uri": "config.html",
+        "can_link_external_content": false
+      }
+    },
+    "capabilities": {
+      "configuration_support": "required",
+      "chat_support": "optional",
+      "bits_support": "none",
+      "subscription_support": "none"
+    },
+    "whitelisted_config_urls": [],
+    "whitelisted_panel_urls": [],
+    "anchor": "video_overlay",
+    "panel_height": 300,
+    "overlay_viewer_url": "video_overlay.html",
+    "config_viewer_url": "config.html",
+    "live_config_viewer_url": "config.html",
+    "request_identity_link": false,
+    "vendor_code": "",
+    "sku": ""
+  }

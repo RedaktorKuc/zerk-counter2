@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Konfiguracja Zerk Counter</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: #0e0e10;
+            color: white;
+        }
+
+        .config-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #18181b;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #9146ff;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #1f1f23;
+            border-radius: 8px;
+        }
+
+        .section h2 {
+            margin-top: 0;
+            color: #dedee3;
+            font-size: 20px;
+        }
+
+        .counter-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .counter-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #9146ff;
+        }
+
+        .button {
+            background: #9146ff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .button:hover {
+            background: #772ce8;
+        }
+
+        .button.danger {
+            background: #dc2626;
+        }
+
+        .button.danger:hover {
+            background: #b91c1c;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            text-align: center;
+            display: none;
+        }
+
+        .status.success {
+            background: #065f46;
+            color: #6ee7b7;
+            display: block;
+        }
+
+        .status.error {
+            background: #7f1d1d;
+            color: #fca5a5;
+            display: block;
+        }
+
+        .instructions {
+            background: #2d2d31;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border-left: 4px solid #9146ff;
+        }
+
+        .instructions h3 {
+            margin-top: 0;
+            color: #9146ff;
+        }
+
+        .instructions ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            color: #dedee3;
+        }
+
+        input[type="number"] {
+            background: #0e0e10;
+            border: 2px solid #3f3f46;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 16px;
+            width: 100px;
+            margin: 0 10px;
+        }
+
+        .manual-set {
+            display: flex;
+            align-items: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="config-container">
+        <h1>Panel Administracyjny - Zerk Counter</h1>
+
+        <div class="section">
+            <h2>Aktualny stan licznika</h2>
+            <div class="counter-info">
+                <div>
+                    <div style="color: #9c9ca3; margin-bottom: 5px;">Liczba zerków:</div>
+                    <div class="counter-value" id="currentCount">0</div>
+                </div>
+                <button class="button danger" id="resetButton">Zeruj licznik</button>
+            </div>
+            
+            <div class="manual-set">
+                <span>Ustaw ręcznie:</span>
+                <input type="number" id="manualCount" min="0" value="0">
+                <button class="button" id="setButton">Ustaw</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Status rozszerzenia</h2>
+            <div id="status" class="status"></div>
+            <button class="button" id="refreshButton" style="margin-top: 15px;">Odśwież</button>
+        </div>
+
+        <div class="instructions">
+            <h3>Jak używać rozszerzenia?</h3>
+            <ul>
+                <li>Rozszerzenie wyświetla się na Twojej transmisji w prawym dolnym rogu</li>
+                <li>Widzowie mogą klikać przycisk "+1 zerk" aby zwiększyć licznik</li>
+                <li>Wymagane jest potwierdzenie od drugiego widza w ciągu 5 sekund</li>
+                <li>Tylko Ty (jako streamer) widzisz panel administratora i możesz zerować licznik</li>
+                <li>Licznik jest zapisywany automatycznie i przywracany po restarcie</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+    <script>
+        let currentCount = 0;
+        const countDisplay = document.getElementById('currentCount');
+        const statusDiv = document.getElementById('status');
+        const resetButton = document.getElementById('resetButton');
+        const refreshButton = document.getElementById('refreshButton');
+        const setButton = document.getElementById('setButton');
+        const manualCountInput = document.getElementById('manualCount');
+
+        // Inicjalizacja
+        window.Twitch.ext.onAuthorized((auth) => {
+            loadConfiguration();
+            showStatus('Rozszerzenie połączone pomyślnie!', 'success');
+        });
+
+        // Ładowanie konfiguracji
+        function loadConfiguration() {
+            const config = window.Twitch.ext.configuration.broadcaster;
+            if (config && config.content) {
+                try {
+                    const data = JSON.parse(config.content);
+                    currentCount = data.count || 0;
+                    countDisplay.textContent = currentCount;
+                    manualCountInput.value = currentCount;
+                } catch (e) {
+                    console.error('Błąd ładowania konfiguracji:', e);
+                    showStatus('Błąd ładowania danych', 'error');
+                }
+            } else {
+                // Pierwsza konfiguracja
+                saveConfiguration(0);
+            }
+        }
+
+        // Zapisywanie konfiguracji
+        function saveConfiguration(count) {
+            const config = {
+                count: count,
+                lastUpdate: Date.now()
+            };
+            
+            try {
+                window.Twitch.ext.configuration.set('broadcaster', '1', JSON.stringify(config));
+                currentCount = count;
+                countDisplay.textContent = count;
+                manualCountInput.value = count;
+                showStatus('Zapisano pomyślnie!', 'success');
+                
+                // Wyślij broadcast o zmianie
+                window.Twitch.ext.send('broadcast', 'application/json', JSON.stringify({
+                    type: 'counterUpdate',
+                    count: count
+                }));
+            } catch (e) {
+                console.error('Błąd zapisywania:', e);
+                showStatus('Błąd zapisywania danych', 'error');
+            }
+        }
+
+        // Obsługa przycisków
+        resetButton.addEventListener('click', () => {
+            if (confirm('Czy na pewno chcesz zresetować licznik do 0?')) {
+                saveConfiguration(0);
+            }
+        });
+
+        refreshButton.addEventListener('click', () => {
+            loadConfiguration();
+            showStatus('Odświeżono dane', 'success');
+        });
+
+        setButton.addEventListener('click', () => {
+            const newValue = parseInt(manualCountInput.value) || 0;
+            if (newValue >= 0) {
+                saveConfiguration(newValue);
+            } else {
+                showStatus('Wartość musi być większa lub równa 0', 'error');
+            }
+        });
+
+        // Nasłuchiwanie na zmiany
+        window.Twitch.ext.configuration.onChanged(() => {
+            loadConfiguration();
+        });
+
+        // Funkcja pomocnicza do wyświetlania statusu
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            
+            setTimeout(() => {
+                statusDiv.className = 'status';
+            }, 3000);
+        }
+
+        // Nasłuchuj na broadcast (aby widzieć zmiany z overlay'a)
+        window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
+            try {
+                const data = JSON.parse(message);
+                if (data.type === 'counterUpdate') {
+                    currentCount = data.count;
+                    countDisplay.textContent = currentCount;
+                    manualCountInput.value = currentCount;
+                }
+            } catch (e) {
+                console.error('Błąd odbierania wiadomości:', e);
+            }
+        });
+    </script>
+</body>
+</html>

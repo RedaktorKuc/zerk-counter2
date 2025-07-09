@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Zerk Counter Extension</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            background: transparent;
+        }
+
+        .counter-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            backdrop-filter: blur(5px);
+            border: 2px solid rgba(145, 70, 255, 0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .counter-display {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        .counter-number {
+            color: #9146ff;
+            font-size: 32px;
+            margin-left: 5px;
+        }
+
+        .zerk-button {
+            background: linear-gradient(135deg, #9146ff, #7c3aed);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 10px rgba(145, 70, 255, 0.4);
+            min-width: 150px;
+        }
+
+        .zerk-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(145, 70, 255, 0.6);
+        }
+
+        .zerk-button:active {
+            transform: translateY(0);
+        }
+
+        .zerk-button.waiting {
+            background: linear-gradient(135deg, #ff9146, #ed7c3a);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .zerk-button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        /* Panel administratora */
+        .admin-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 10px;
+            padding: 15px;
+            display: none;
+            border: 2px solid rgba(255, 0, 0, 0.5);
+        }
+
+        .admin-panel.visible {
+            display: block;
+        }
+
+        .reset-button {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .reset-button:hover {
+            background: #b91c1c;
+        }
+
+        .feedback {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(145, 70, 255, 0.9);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .feedback.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="counter-container">
+        <div class="counter-display">
+            Licznik Zerk: <span class="counter-number" id="counter">0</span>
+        </div>
+        <button class="zerk-button" id="zerkButton">+1 zerk</button>
+    </div>
+
+    <div class="admin-panel" id="adminPanel">
+        <button class="reset-button" id="resetButton">Zeruj licznik</button>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+    <script>
+        // Inicjalizacja
+        let isWaitingForConfirmation = false;
+        let firstClickUserId = null;
+        let confirmationTimeout = null;
+        let currentCount = 0;
+        let userId = null;
+        let channelId = null;
+        let isBroadcaster = false;
+
+        const button = document.getElementById('zerkButton');
+        const counterDisplay = document.getElementById('counter');
+        const adminPanel = document.getElementById('adminPanel');
+        const resetButton = document.getElementById('resetButton');
+        const feedback = document.getElementById('feedback');
+
+        // Inicjalizacja Twitch Extension
+        window.Twitch.ext.onAuthorized((auth) => {
+            userId = auth.userId;
+            channelId = auth.channelId;
+            
+            // Sprawdź czy użytkownik jest broadcasterem
+            window.Twitch.ext.viewer.onChanged(() => {
+                isBroadcaster = window.Twitch.ext.viewer.isBroadcaster;
+                if (isBroadcaster) {
+                    adminPanel.classList.add('visible');
+                }
+            });
+
+            // Nasłuchuj na zmiany konfiguracji (licznika)
+            window.Twitch.ext.configuration.onChanged(() => {
+                const config = window.Twitch.ext.configuration.broadcaster;
+                if (config && config.content) {
+                    try {
+                        const data = JSON.parse(config.content);
+                        currentCount = data.count || 0;
+                        counterDisplay.textContent = currentCount;
+                    } catch (e) {
+                        console.error('Błąd parsowania konfiguracji:', e);
+                    }
+                }
+            });
+
+            // Pobierz aktualną wartość licznika
+            loadCounter();
+        });
+
+        // Obsługa kliknięcia przycisku
+        button.addEventListener('click', () => {
+            if (button.disabled) return;
+
+            if (!isWaitingForConfirmation) {
+                // Pierwsze kliknięcie
+                firstClick();
+            } else {
+                // Drugie kliknięcie (potwierdzenie)
+                if (userId !== firstClickUserId) {
+                    confirmClick();
+                } else {
+                    showFeedback('Potrzebne potwierdzenie od innego widza!');
+                }
+            }
+        });
+
+        // Obsługa przycisku reset (tylko dla broadcasterów)
+        resetButton.addEventListener('click', () => {
+            if (isBroadcaster) {
+                resetCounter();
+            }
+        });
+
+        function firstClick() {
+            isWaitingForConfirmation = true;
+            firstClickUserId = userId;
+            button.textContent = 'potwierdź zerk';
+            button.classList.add('waiting');
+
+            // Ustaw timeout na 5 sekund
+            confirmationTimeout = setTimeout(() => {
+                cancelConfirmation();
+            }, 5000);
+        }
+
+        function confirmClick() {
+            clearTimeout(confirmationTimeout);
+            
+            // Zwiększ licznik
+            currentCount++;
+            updateCounter(currentCount);
+            
+            // Pokaż feedback
+            showFeedback('+1 ZERK!');
+            
+            // Resetuj stan przycisku
+            resetButtonState();
+        }
+
+        function cancelConfirmation() {
+            showFeedback('Czas minął - brak potwierdzenia');
+            resetButtonState();
+        }
+
+        function resetButtonState() {
+            isWaitingForConfirmation = false;
+            firstClickUserId = null;
+            button.textContent = '+1 zerk';
+            button.classList.remove('waiting');
+            
+            if (confirmationTimeout) {
+                clearTimeout(confirmationTimeout);
+                confirmationTimeout = null;
+            }
+        }
+
+        function updateCounter(newCount) {
+            currentCount = newCount;
+            counterDisplay.textContent = currentCount;
+            
+            // Zapisz do konfiguracji broadcastera
+            const config = {
+                count: currentCount,
+                lastUpdate: Date.now()
+            };
+            
+            window.Twitch.ext.configuration.set('broadcaster', '1', JSON.stringify(config));
+        }
+
+        function resetCounter() {
+            currentCount = 0;
+            updateCounter(0);
+            showFeedback('Licznik został zresetowany!');
+        }
+
+        function loadCounter() {
+            // Spróbuj załadować z konfiguracji
+            const config = window.Twitch.ext.configuration.broadcaster;
+            if (config && config.content) {
+                try {
+                    const data = JSON.parse(config.content);
+                    currentCount = data.count || 0;
+                    counterDisplay.textContent = currentCount;
+                } catch (e) {
+                    console.error('Błąd ładowania licznika:', e);
+                }
+            }
+        }
+
+        function showFeedback(message) {
+            feedback.textContent = message;
+            feedback.classList.add('show');
+            
+            setTimeout(() => {
+                feedback.classList.remove('show');
+            }, 2000);
+        }
+
+        // Obsługa PubSub dla synchronizacji między widzami
+        window.Twitch.ext.listen('broadcast', (target, contentType, message) => {
+            try {
+                const data = JSON.parse(message);
+                if (data.type === 'counterUpdate') {
+                    currentCount = data.count;
+                    counterDisplay.textContent = currentCount;
+                }
+            } catch (e) {
+                console.error('Błąd odbierania wiadomości:', e);
+            }
+        });
+
+        // Gdy licznik się zmieni, wyślij broadcast
+        function broadcastCounterUpdate() {
+            window.Twitch.ext.send('broadcast', 'application/json', JSON.stringify({
+                type: 'counterUpdate',
+                count: currentCount
+            }));
+        }
+    </script>
+</body>
+</html>
